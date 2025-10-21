@@ -6,6 +6,7 @@ local state = {
     path = nil,
     settings = nil,
     lastFlush = nil,
+    timelineStarted = false,
 }
 
 local dcsLog = log
@@ -89,8 +90,17 @@ local function writeLines(lines)
     end
 
     for _, line in ipairs(lines) do
-        state.file:write(line)
-        if line:sub(-1) ~= '\n' then
+        local text = ''
+        if line ~= nil then
+            if type(line) ~= 'string' then
+                text = tostring(line)
+            else
+                text = line
+            end
+        end
+
+        state.file:write(text)
+        if text == '' or text:sub(-1) ~= '\n' then
             state.file:write('\n')
         end
     end
@@ -115,6 +125,7 @@ function writer.open(settings, metadata)
     state.path = path
     state.settings = settings
     state.lastFlush = os.clock()
+    state.timelineStarted = false
 
     writeLines(defaultMetadataLines(settings, metadata))
     state.file:flush()
@@ -123,19 +134,43 @@ function writer.open(settings, metadata)
     return path
 end
 
+function writer.addHeaderLines(lines)
+    if not state.file or state.timelineStarted then
+        return
+    end
+
+    if type(lines) ~= 'table' then
+        return
+    end
+
+    writeLines(lines)
+    state.file:flush()
+end
+
+function writer.addHeaderLine(line)
+    if line == nil then
+        return
+    end
+
+    writer.addHeaderLines({ line })
+end
+
 function writer.appendFrame(simTimeSeconds, lines)
     if not state.file then
         return
     end
 
-    local frameLines = { string.format('#%.3f', simTimeSeconds) }
+    local frameLines = { string.format('#%.3f', simTimeSeconds or 0) }
     if type(lines) == 'table' then
         for _, line in ipairs(lines) do
-            frameLines[#frameLines + 1] = line
+            if line and line ~= '' then
+                frameLines[#frameLines + 1] = line
+            end
         end
     end
 
     writeLines(frameLines)
+    state.timelineStarted = true
 end
 
 function writer.flush()
@@ -176,6 +211,7 @@ function writer.close()
     state.path = nil
     state.settings = nil
     state.lastFlush = nil
+    state.timelineStarted = false
 end
 
 function writer.isOpen()

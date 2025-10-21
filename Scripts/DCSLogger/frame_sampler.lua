@@ -1,5 +1,9 @@
 local sampler = {}
 
+local dcsLog = log
+local LOG_ERROR = dcsLog and dcsLog.ERROR or 1
+local TAG = 'DCSLOGGER.SAMPLER'
+
 local state = {
     config = nil,
     registry = nil,
@@ -35,6 +39,12 @@ local function writerAvailable()
     return result and true or false
 end
 
+local function safeLog(level, message)
+    if dcsLog and dcsLog.write then
+        dcsLog.write(TAG, level, message)
+    end
+end
+
 function sampler.init(config, registryModule, writerModule)
     state.config = config
     state.registry = registryModule
@@ -58,8 +68,17 @@ function sampler.tick(simTime, realClock)
 
     state.lastSampleTime = now
 
-    -- TODO: collect object snapshots from registry and serialize them.
-    state.writer.appendFrame(now, nil)
+    local lines = {}
+    if state.registry and state.registry.captureFrame then
+        local ok, result = pcall(state.registry.captureFrame, now)
+        if ok and type(result) == 'table' then
+            lines = result
+        elseif not ok then
+            safeLog(LOG_ERROR, 'registry.captureFrame failed: ' .. tostring(result))
+        end
+    end
+
+    state.writer.appendFrame(now, lines)
     state.writer.maybeFlush(realClock or os.clock())
 end
 

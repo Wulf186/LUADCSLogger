@@ -42,7 +42,9 @@ local function collectMetadata(settings)
         metadata[#metadata + 1] = '0,Briefing=' .. sanitize(missionBriefing)
     end
 
-    metadata[#metadata + 1] = '0,RecordingTime=' .. os.date('!%Y-%m-%dT%H:%M:%SZ')
+    local nowIso = os.date('!%Y-%m-%dT%H:%M:%SZ')
+    metadata[#metadata + 1] = '0,ReferenceTime=' .. nowIso
+    metadata[#metadata + 1] = '0,RecordingTime=' .. nowIso
     metadata[#metadata + 1] = '0,DataRecorder=' .. sanitize(settings.recorderName or 'DCSLogger')
     metadata[#metadata + 1] = '0,DataSource=DCS'
 

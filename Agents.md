@@ -66,6 +66,12 @@
 - **Troubleshooting**: Provide common error messages (missing LuaSocket, permission issues) and guidance on enabling debug logging.
 - **Maintenance backlog**: Track future enhancements such as event logging, real-time streaming, and integration with other tools (e.g., AWACS overlays).
 
+## Immediate Next Steps
+- Add static mission objects to the registry so immobile units appear in every frame with stable identifiers.
+- Populate transform fields beyond lat/long (world X/Z, AGL) and tune reference offsets to better mirror Tacview output.
+- Enrich telemetry (IAS, throttle, pilot head angles) and verify coalition/color/type mappings against DCS enumerations.
+- Run a test mission, diff the produced ACMI against the Tacview sample, and adjust formatting precision/cadence as needed.
+
 ## Development Plan
 1. Requirements Finalization `[x]`
    - Capture expected output format from sample ACMI file.
@@ -105,3 +111,4 @@
 - 2025-10-21: Completed implementation breakdown, testing strategy, and documentation notes; plan steps 5-7 completed.
 - 2025-10-21: Scaffolded DCS logger modules and wired `Export.lua` to load `DCSLoggerGameExport.lua`; ready to implement sampling/serialization.
 - 2025-10-21: Updated config/sampler to log every export frame (Tacview frequency) with optional throttling via `samplingRateHz`.
+- 2025-10-21: Implemented header writer hooks, frame sampler integration, and preliminary object registry to capture dynamic units each frame.
