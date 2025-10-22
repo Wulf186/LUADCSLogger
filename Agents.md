@@ -70,6 +70,7 @@
 - Flight-test the current build to confirm transform accuracy (lat/lon offsets, altitude/AGL, heading) against recorded Tacview data.
 - Validate extended telemetry fields (IAS, throttle, pilot head angles, fuel) against Tacview outputs and tune formatting/units if needed.
 - Validate coalition/type mappings and ensure despawn handling leaves appropriate gaps versus Tacview output.
+- Introduce friendly type/coalition/country string mapping to replace numeric identifiers in `Type=` and `Country=` fields.
 - Produce a test ACMI via DCS, diff it against the sample, and iterate on ordering/precision gaps.
 
 ## Development Plan
@@ -115,3 +116,4 @@
 - 2025-10-21: Seeded mission statics, persisted them in the registry, and began populating ACMI transform/property lines for every export tick.
 - 2025-10-21: Refined transform data (lon/lat offsets, world X/Z, altitude/AGL) with cartesian fallbacks and precision guards to better match Tacview output.
 - 2025-10-21: Added optional telemetry export (IAS, Mach, fuel, throttle, pilot head angles) for the player aircraft with configurable toggles.
+- 2025-10-21: Implemented delta-based frame emission, monotonic timing fallback, and telemetry deduplication to reduce file size closer to Tacview output.

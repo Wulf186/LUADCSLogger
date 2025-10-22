@@ -9,6 +9,7 @@ local state = {
     registry = nil,
     writer = nil,
     lastSampleTime = nil,
+    lastRealClock = nil,
     sampleInterval = 0,
 }
 
@@ -51,6 +52,7 @@ function sampler.init(config, registryModule, writerModule)
     state.writer = writerModule
     state.sampleInterval = computeSampleInterval(config)
     state.lastSampleTime = nil
+    state.lastRealClock = nil
 end
 
 function sampler.tick(simTime, realClock)
@@ -58,15 +60,32 @@ function sampler.tick(simTime, realClock)
         return
     end
 
-    local now = simTime or 0
-    if state.lastSampleTime
-        and state.sampleInterval > 0
-        and (now - state.lastSampleTime) < state.sampleInterval then
-        state.writer.maybeFlush(realClock or os.clock())
-        return
+    local clockNow = realClock or os.clock()
+    local now = simTime
+
+    if type(now) ~= 'number' then
+        now = nil
     end
 
-    state.lastSampleTime = now
+    if not now then
+        if state.lastSampleTime and state.lastRealClock and clockNow then
+            now = state.lastSampleTime + math.max(0, clockNow - state.lastRealClock)
+        else
+            now = 0
+        end
+    end
+
+    if state.lastSampleTime then
+        if now < state.lastSampleTime then
+            now = state.lastSampleTime + math.max(0, (clockNow or 0) - (state.lastRealClock or 0))
+        end
+
+        if state.sampleInterval > 0 and (now - state.lastSampleTime) < state.sampleInterval then
+            state.writer.maybeFlush(clockNow)
+            state.lastRealClock = clockNow
+            return
+        end
+    end
 
     local lines = {}
     if state.registry and state.registry.captureFrame then
@@ -78,8 +97,13 @@ function sampler.tick(simTime, realClock)
         end
     end
 
-    state.writer.appendFrame(now, lines)
-    state.writer.maybeFlush(realClock or os.clock())
+    if lines and #lines > 0 then
+        state.writer.appendFrame(now, lines)
+    end
+
+    state.writer.maybeFlush(clockNow)
+    state.lastSampleTime = now
+    state.lastRealClock = clockNow
 end
 
 function sampler.shutdown()

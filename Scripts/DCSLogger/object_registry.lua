@@ -395,7 +395,30 @@ local function collectPlayerTelemetry(entry, selfData)
         return nil
     end
 
-    local lines = {}
+    entry.telemetryState = entry.telemetryState or {}
+    local stateCache = entry.telemetryState
+
+    local function addNumeric(groupKey, name, value, format, tolerance, zeroTolerance)
+        if type(value) ~= 'number' then
+            value = tonumber(value)
+        end
+        if type(value) ~= 'number' then
+            return
+        end
+
+        local key = groupKey .. ':' .. name
+        local prev = stateCache[key]
+        local tol = tolerance or 0
+        if prev and math.abs(value - prev) <= tol then
+            return
+        end
+
+        stateCache[key] = value
+        local sanitized = zeroGuard(value, zeroTolerance or tol or 1e-6)
+        return string.format('%s=' .. format, name, sanitized)
+    end
+
+    local velocityLine = {}
 
     local iasValue = nil
     if selfData and type(selfData.IndicatedAirSpeed) == 'number' then
@@ -406,48 +429,43 @@ local function collectPlayerTelemetry(entry, selfData)
             iasValue = toKnots(ias)
         end
     end
+    local metric = addNumeric('velocity', 'IAS', iasValue, '%.1f', 0.5, 0.05)
+    if metric then velocityLine[#velocityLine + 1] = metric end
 
-    local lineVelocity = {}
-    if iasValue then
-        lineVelocity[#lineVelocity + 1] = string.format('IAS=%.1f', zeroGuard(iasValue, 1e-2))
-    end
+    metric = addNumeric('velocity', 'Mach', selfData and selfData.MachNumber, '%.2f', 0.01, 0.001)
+    if metric then velocityLine[#velocityLine + 1] = metric end
 
-    if selfData and type(selfData.MachNumber) == 'number' then
-        lineVelocity[#lineVelocity + 1] = string.format('Mach=%.2f', zeroGuard(selfData.MachNumber, 1e-3))
-    end
-
+    local aoa = nil
     if selfData and type(selfData.AoA) == 'number' then
-        lineVelocity[#lineVelocity + 1] = string.format('AoA=%.1f', zeroGuard(math.deg(selfData.AoA), 1e-2))
+        aoa = math.deg(selfData.AoA)
     end
+    metric = addNumeric('velocity', 'AoA', aoa, '%.1f', 0.2, 0.05)
+    if metric then velocityLine[#velocityLine + 1] = metric end
 
     local fuelWeight = extractFuelWeight(selfData)
-    if fuelWeight then
-        lineVelocity[#lineVelocity + 1] = string.format('FuelWeight=%.1f', zeroGuard(fuelWeight, 1e-1))
+    metric = addNumeric('velocity', 'FuelWeight', fuelWeight, '%.1f', 5, 0.1)
+    if metric then velocityLine[#velocityLine + 1] = metric end
+
+    local lines = {}
+    if #velocityLine > 0 then
+        lines[#lines + 1] = string.format('%s,%s', entry.acmiId, table.concat(velocityLine, ','))
     end
 
-    if #lineVelocity > 0 then
-        lines[#lines + 1] = string.format('%s,%s', entry.acmiId, table.concat(lineVelocity, ','))
-    end
-
+    local controlsLine = {}
     local throttle = collectThrottle()
+    metric = addNumeric('controls', 'Throttle', throttle, '%.2f', 0.01, 0.001)
+    if metric then controlsLine[#controlsLine + 1] = metric end
+
     local headYaw, headPitch, headRoll = extractPilotHeadAngles()
+    metric = addNumeric('controls', 'PilotHeadYaw', headYaw, '%.2f', 1.0, 0.1)
+    if metric then controlsLine[#controlsLine + 1] = metric end
+    metric = addNumeric('controls', 'PilotHeadPitch', headPitch, '%.2f', 1.0, 0.1)
+    if metric then controlsLine[#controlsLine + 1] = metric end
+    metric = addNumeric('controls', 'PilotHeadRoll', headRoll, '%.2f', 1.0, 0.1)
+    if metric then controlsLine[#controlsLine + 1] = metric end
 
-    local lineControls = {}
-    if throttle then
-        lineControls[#lineControls + 1] = string.format('Throttle=%.2f', zeroGuard(throttle, 1e-3))
-    end
-    if headYaw then
-        lineControls[#lineControls + 1] = string.format('PilotHeadYaw=%.2f', zeroGuard(headYaw, 1e-2))
-    end
-    if headPitch then
-        lineControls[#lineControls + 1] = string.format('PilotHeadPitch=%.2f', zeroGuard(headPitch, 1e-2))
-    end
-    if headRoll then
-        lineControls[#lineControls + 1] = string.format('PilotHeadRoll=%.2f', zeroGuard(headRoll, 1e-2))
-    end
-
-    if #lineControls > 0 then
-        lines[#lines + 1] = string.format('%s,%s', entry.acmiId, table.concat(lineControls, ','))
+    if #controlsLine > 0 then
+        lines[#lines + 1] = string.format('%s,%s', entry.acmiId, table.concat(controlsLine, ','))
     end
 
     if #lines == 0 then
@@ -533,6 +551,21 @@ local function buildAcmiLine(entry)
         line = string.format('%s,%s', line, properties)
     end
 
+    return line
+end
+
+local function emitIfChanged(entry, line, simTime)
+    if not line then
+        return nil
+    end
+
+    if entry.lastSerializedLine == line then
+        entry.lastSerializedTime = simTime
+        return nil
+    end
+
+    entry.lastSerializedLine = line
+    entry.lastSerializedTime = simTime
     return line
 end
 
@@ -715,7 +748,7 @@ local function updateEntryFromWorldObject(entry, source, simTime)
     entry.coalition = coalition
     entry.color = color
 
-    return buildAcmiLine(entry)
+    return emitIfChanged(entry, buildAcmiLine(entry), simTime)
 end
 
 local function capturePlayerAircraft(simTime, seen)
@@ -779,7 +812,7 @@ local function capturePlayerAircraft(simTime, seen)
     entry.color = color
 
     seen[keyString] = true
-    local primaryLine = buildAcmiLine(entry)
+    local primaryLine = emitIfChanged(entry, buildAcmiLine(entry), simTime)
     local telemetryLines = collectPlayerTelemetry(entry, selfData)
     return primaryLine, telemetryLines
 end
@@ -851,7 +884,10 @@ function registry.captureFrame(simTime)
 
     for key, entry in pairs(state.objects) do
         if entry.isStatic and not seen[key] then
-            lines[#lines + 1] = buildAcmiLine(entry)
+            local staticLine = emitIfChanged(entry, buildAcmiLine(entry), simTime)
+            if staticLine then
+                lines[#lines + 1] = staticLine
+            end
             seen[key] = true
         end
     end

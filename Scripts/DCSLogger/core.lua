@@ -77,11 +77,18 @@ function core.afterNextFrame()
         return
     end
 
-    local simTime = 0
+    local simTime = nil
+    if LoGetModelTime then
+        local ok, value = pcall(LoGetModelTime)
+        if ok then
+            simTime = value
+        end
+    end
+
     if DCS and DCS.getModelTime then
         local ok, result = pcall(DCS.getModelTime)
         if ok then
-            simTime = result or 0
+            simTime = result
         end
     end
 
